@@ -190,6 +190,7 @@
     const csrfToken = document.querySelector("#record-csrf-token").value;
     let stream;
     let recorder;
+    let recorderFailed = false;
     let chunks = [];
     let recordingBlob;
     let previewUrl;
@@ -240,6 +241,7 @@
       setStatus("正在請求麥克風權限…");
       try {
         stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        recorderFailed = false;
         chunks = [];
         const supportedTypes = [
           "audio/webm;codecs=opus",
@@ -251,9 +253,23 @@
         recorder.addEventListener("dataavailable", (event) => {
           if (event.data.size) chunks.push(event.data);
         });
+        recorder.addEventListener("error", (event) => {
+          recorderFailed = true;
+          clearInterval(timer);
+          stopButton.hidden = true;
+          startButton.hidden = false;
+          startButton.disabled = false;
+          stopMicrophone();
+          const errorName = event.error?.name;
+          const message = errorName === "NotReadableError"
+            ? "麥克風無法讀取，請確認未被其他程式占用後重試。"
+            : "錄音中斷，麥克風已關閉；請重試或使用檔案上傳。";
+          setStatus(message, "error");
+        });
         recorder.addEventListener("stop", () => {
           clearInterval(timer);
           stopMicrophone();
+          if (recorderFailed) return;
           const type = recorder.mimeType || chunks[0]?.type || "audio/webm";
           recordingBlob = new Blob(chunks, { type });
           if (!recordingBlob.size) {
@@ -291,6 +307,8 @@
           ? "麥克風權限被拒絕；請允許此網站使用麥克風，或改用檔案上傳。"
           : error.name === "NotFoundError"
             ? "找不到可用的麥克風。"
+            : error.name === "NotReadableError"
+              ? "麥克風無法讀取，請確認未被其他程式占用後重試。"
             : "無法啟動錄音，請檢查麥克風設定後重試。";
         setStatus(message, "error");
       }
