@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <title>123NoteSystem</title>
+    <style>
+      :root { color-scheme: light; --ink: #20302d; --muted: #697873; --line: #dce5df; --paper: #fff; --canvas: #f3f6f2; --accent: #087e70; --accent-dark: #075f56; --soft: #e8f1ec; --soft-ink: #275e52; --header: #075f56; --header-ink: #fff; --header-border: rgba(255,255,255,.42); --focus: #e3a640; --danger: #b65349; --danger-soft: #fff0ed; --danger-ink: #85382e; --warning: #c68532; --warning-soft: #fff6e6; --warning-ink: #754513; --success: #23664e; --success-soft: #e7f2ed; --success-ink: #23664e; --shadow: rgba(28, 59, 51, .12); }
+      * { box-sizing: border-box; }
+      [hidden] { display: none !important; }
+      body { margin: 0; background: var(--canvas); color: var(--ink); font-family: "Noto Sans TC", "Microsoft JhengHei", sans-serif; line-height: 1.55; transition: background-color .18s ease, color .18s ease; }
+      body[data-theme="red"] { --canvas: #fff0ef; --paper: #fffafa; --ink: #382422; --muted: #765e5a; --line: #ead2cf; --accent: #a93434; --accent-dark: #852828; --soft: #f8e2df; --soft-ink: #742f2b; --header: #852828; }
+      body[data-theme="orange"] { --canvas: #fff2e6; --paper: #fffbf6; --ink: #38291f; --muted: #76614f; --line: #ebd8c3; --accent: #a94f18; --accent-dark: #833b10; --soft: #f8e8d6; --soft-ink: #70401e; --header: #833b10; }
+      body[data-theme="yellow"] { --canvas: #fffbe5; --paper: #fffef7; --ink: #352f1e; --muted: #716744; --line: #e8dfb8; --accent: #786009; --accent-dark: #5d4904; --soft: #f4edc9; --soft-ink: #62521a; --header: #5d4904; }
+      body[data-theme="green"] { --canvas: #edf6ef; --paper: #fbfefb; --ink: #20302d; --muted: #5d7369; --line: #d2e2d6; --accent: #176b43; --accent-dark: #105333; --soft: #deeee2; --soft-ink: #245a39; --header: #105333; }
+      body[data-theme="blue"] { --canvas: #edf4ff; --paper: #fbfdff; --ink: #202b3d; --muted: #5d6c82; --line: #d4dfef; --accent: #2458a6; --accent-dark: #193f79; --soft: #dfeafd; --soft-ink: #244d88; --header: #193f79; }
+      body[data-theme="indigo"] { --canvas: #f0efff; --paper: #fcfbff; --ink: #29263e; --muted: #68627f; --line: #ddd9ef; --accent: #5146a5; --accent-dark: #3b337d; --soft: #e6e2fa; --soft-ink: #4a4288; --header: #3b337d; }
+      body[data-theme="violet"] { --canvas: #f8efff; --paper: #fefbff; --ink: #35243d; --muted: #745d7e; --line: #e8d9ed; --accent: #803b91; --accent-dark: #602c6d; --soft: #f0e1f5; --soft-ink: #653875; --header: #602c6d; }
+      body[data-theme="black"] { color-scheme: dark; --canvas: #151918; --paper: #202624; --ink: #f0f4f2; --muted: #b2bfba; --line: #46514d; --accent: #167864; --accent-dark: #105b4c; --coral: #dc876a; --soft: #293b35; --soft-ink: #c1e8d8; --header: #0c100f; --header-ink: #f0f4f2; --header-border: #59665f; --focus: #f2ce65; --danger: #ff9588; --danger-soft: #492522; --danger-ink: #ffd0c8; --warning: #f1c36d; --warning-soft: #463a1d; --warning-ink: #f9e2af; --success: #77d5a5; --success-soft: #203d30; --success-ink: #b6f1d0; --shadow: rgba(0, 0, 0, .38); }
+      body[data-theme="white"] { color-scheme: light; }
+      a { color: var(--accent-dark); }
+      button, input, textarea, select { font: inherit; }
+      button, .button { display: inline-flex; align-items: center; justify-content: center; min-height: 40px; padding: 8px 13px; border: 1px solid var(--accent); border-radius: 6px; background: var(--accent); color: white; text-decoration: none; cursor: pointer; }
+      button:hover, .button:hover { background: var(--accent-dark); }
+      button.secondary, .button.secondary { border-color: var(--line); background: var(--paper); color: var(--ink); }
+      button.danger { border-color: var(--danger); background: var(--danger); color: var(--danger-ink); }
+      :focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+      .topbar { background: var(--header); color: var(--header-ink); }
+      .topbar > .container { min-height: 72px; padding: 12px 22px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+      .brand { color: var(--header-ink); font-weight: 750; text-decoration: none; }
+      .nav { min-width: 0; display: flex; align-items: center; justify-content: flex-end; gap: 10px; flex-wrap: wrap; }
+      .nav a { color: var(--header-ink); text-decoration: none; }
+      .nav form { margin: 0; }
+      .nav button { min-height: 34px; padding: 5px 10px; border-color: var(--header-border); background: transparent; color: var(--header-ink); }
+      .container { max-width: 1220px; margin: auto; padding: 28px 22px 48px; }
+      .workspace { display: grid; grid-template-columns: 210px minmax(0, 1fr); gap: 28px; align-items: start; }
+      .sidebar { position: sticky; top: 20px; }
+      .sidebar a { display: block; padding: 9px 12px; border-radius: 5px; text-decoration: none; color: var(--ink); }
+      .sidebar a.active, .sidebar a:hover { background: var(--soft); }
+      .page-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
+      h1 { margin: 0; font-size: 1.65rem; }
+      h2 { margin: 0 0 18px; font-size: 1.35rem; }
+      .muted, .note-meta { color: var(--muted); font-size: .9rem; }
+      .panel { padding: 20px; border: 1px solid var(--line); border-radius: 6px; background: var(--paper); }
+      .card { width: min(100%, 480px); margin: 7vh auto; padding: clamp(24px, 5vw, 42px); border: 1px solid var(--line); border-radius: 8px; background: var(--paper); box-shadow: 0 18px 50px var(--shadow); }
+      .auth-mark { display: inline-flex; align-items: center; justify-content: center; width: 42px; height: 42px; margin-bottom: 18px; border-radius: 12px 12px 12px 3px; background: var(--accent); color: white; font-weight: 800; }
+      .auth-title { margin: 0 0 6px; font-size: 1.8rem; }
+      .auth-copy { margin: 0 0 26px; color: var(--muted); }
+      .auth-footer { margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--line); color: var(--muted); }
+      .auth-footer a { font-weight: 650; }
+      .field-error { margin: 6px 0 0; color: var(--danger-ink); font-size: .9rem; }
+      .file-picker { display: block; padding: 16px; border: 1px dashed var(--line); border-radius: 6px; background: var(--soft); }
+      .attachment-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 230px), 1fr)); gap: 12px; margin: 16px 0 0; padding: 0; list-style: none; }
+      .attachment-item { min-width: 0; padding: 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--paper); }
+      .attachment-preview { display: block; width: 100%; max-height: 210px; margin-bottom: 10px; object-fit: contain; background: var(--soft); }
+      .attachment-name { display: block; overflow-wrap: anywhere; font-weight: 650; }
+      .attachment-item form { margin-top: 10px; }
+      .audio-player { display: block; width: 100%; margin: 10px 0; }
+      .recording-panel { margin: 14px 0; padding: 16px; border: 1px solid var(--line); border-radius: 6px; background: var(--soft); }
+      .recording-status { min-height: 24px; margin: 8px 0; color: var(--muted); }
+      .recording-status[data-state="recording"] { color: var(--danger-ink); }
+      .recording-preview { display: block; width: 100%; margin: 10px 0; }
+      .theme-picker { position: relative; }
+      .theme-picker summary { padding: 5px 9px; border: 1px solid var(--header-border); border-radius: 5px; color: var(--header-ink); cursor: pointer; list-style: none; }
+      .theme-picker summary::-webkit-details-marker { display: none; }
+      .theme-menu { position: fixed; z-index: 20; top: 72px; right: 12px; width: min(220px, calc(100vw - 24px)); max-height: min(460px, calc(100vh - 24px)); max-height: min(460px, calc(100dvh - 24px)); overflow-y: auto; overscroll-behavior: contain; padding: 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--paper); box-shadow: 0 12px 30px var(--shadow); }
+      .theme-option { display: flex; width: 100%; justify-content: flex-start; gap: 10px; border-color: transparent; background: transparent; color: var(--ink); }
+      .theme-option:hover, .theme-option[aria-pressed="true"] { border-color: var(--line); background: var(--soft); color: var(--ink); }
+      .theme-swatch { flex: 0 0 18px; width: 18px; height: 18px; border: 1px solid var(--line); border-radius: 50%; background: var(--swatch); }
+      .theme-current { margin-left: auto; color: var(--muted); font-size: .8rem; }
+      .search-row, .toolbar, .actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+      .search-row { margin-bottom: 16px; }
+      .search-row input { flex: 1; min-width: 180px; }
+      .form-group { margin: 0 0 18px; }
+      label { display: block; margin-bottom: 7px; font-size: .92rem; font-weight: 650; }
+      input, textarea, select { width: 100%; min-height: 42px; padding: 9px 11px; border: 1px solid var(--line); border-radius: 5px; background: var(--paper); color: var(--ink); }
+      textarea { min-height: 48vh; resize: vertical; line-height: 1.7; }
+      .note-list { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+      .note-item { padding: 16px; border: 1px solid var(--line); border-radius: 6px; background: var(--paper); }
+      .note-title { margin: 0 0 5px; font-size: 1.08rem; overflow-wrap: anywhere; }
+      .note-title a { color: var(--ink); text-decoration: none; }
+      .note-summary { margin: 10px 0; color: var(--ink); white-space: pre-wrap; overflow-wrap: anywhere; }
+      .tag { display: inline-block; margin: 8px 5px 0 0; padding: 2px 8px; border-radius: 99px; background: var(--soft); color: var(--soft-ink); font-size: .82rem; text-decoration: none; }
+      .flash { margin: 0 0 14px; padding: 10px 13px; border-left: 4px solid var(--accent); background: var(--soft); color: var(--ink); }
+      .flash.success { border-color: var(--success); background: var(--success-soft); color: var(--success-ink); }
+      .flash.danger { border-color: var(--danger); background: var(--danger-soft); color: var(--danger-ink); }
+      .flash.warning { border-color: var(--warning); background: var(--warning-soft); color: var(--warning-ink); }
+      .empty { padding: 44px 20px; text-align: center; color: var(--muted); }
+      .save-status { min-height: 24px; color: var(--muted); }
+      .save-status[data-state="error"] { color: var(--danger-ink); }
+      .save-status[data-state="saved"] { color: var(--success-ink); }
+      .editor-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+      kbd { padding: 1px 5px; border: 1px solid var(--line); border-radius: 4px; background: var(--paper); color: var(--ink); font-size: .8em; }
+      @media (max-width: 720px) {
+        .topbar > .container { padding: 12px 14px; }
+        .nav { gap: 8px; }
+        .container { padding: 20px 14px 36px; }
+        .workspace { grid-template-columns: 1fr; gap: 14px; }
+        .sidebar { position: static; display: flex; overflow-x: auto; gap: 4px; }
+        .sidebar a { white-space: nowrap; }
+        .page-head { align-items: flex-start; }
+        textarea { min-height: 42vh; }
+        .card { margin: 24px auto; padding: 24px 20px; }
+        .attachment-list { grid-template-columns: 1fr; }
+      }
+      @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; } }
+    </style>
+  </head>
+  <body data-theme="{{ session.get('theme', 'white') }}" data-new-note-url="{{ url_for('new_note') if session.get('user_id') else '' }}">
+    <div class="topbar">
+      <div class="container">
+        <a class="brand" href="{{ url_for('notes') if session.get('user_id') else url_for('login') }}">123NoteSystem</a>
+        <div class="nav">
+          {% if session.get('user_id') %}
+            <span>{{ session.get('username') }}</span>
+            <details class="theme-picker">
+              <summary>背景主題</summary>
+              <form class="theme-menu" method="post" action="{{ url_for('update_theme') }}" aria-label="選擇背景主題">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="return_to" value="{{ request.full_path }}">
+                {% for value, label, color in [('red', '紅色', '#c94b4b'), ('orange', '橙色', '#db762f'), ('yellow', '黃色', '#d7b52d'), ('green', '綠色', '#3e8b59'), ('blue', '藍色', '#4179c7'), ('indigo', '靛色', '#6257ae'), ('violet', '紫色', '#9253a8'), ('black', '黑色', '#171b19'), ('white', '白色', '#ffffff')] %}
+                  <button class="theme-option" type="submit" name="theme" value="{{ value }}" aria-pressed="{{ 'true' if session.get('theme', 'white') == value else 'false' }}">
+                    <span class="theme-swatch" style="--swatch: {{ color }}" aria-hidden="true"></span>
+                    <span>{{ label }}</span>
+                    {% if session.get('theme', 'white') == value %}<span class="theme-current">目前</span>{% endif %}
+                  </button>
+                {% endfor %}
+              </form>
+            </details>
+            <form method="post" action="{{ url_for('logout') }}" data-logout>
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit">登出</button>
+            </form>
+          {% else %}
+            <a href="{{ url_for('login') }}">登入</a>
+            <a href="{{ url_for('register') }}">註冊</a>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <div class="container">
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          {% for category, message in messages %}
+            <div class="flash {{ category }}">{{ message }}</div>
+          {% endfor %}
+        {% endif %}
+      {% endwith %}
+
+      {% block content %}{% endblock %}
+    </div>
+    {% block scripts %}{% endblock %}
+    <script>
+      const newNoteUrl = document.body.dataset.newNoteUrl || null;
+      document.addEventListener("keydown", (event) => {
+        if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+          const search = document.querySelector("[data-search]");
+          if (search) { event.preventDefault(); search.focus(); }
+        }
+        if (newNoteUrl && (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "n" && !event.target.matches("input, textarea")) {
+          event.preventDefault();
+          const form = document.createElement("form");
+          form.method = "post";
+          form.action = newNoteUrl;
+          const token = document.createElement("input");
+          token.type = "hidden";
+          token.name = "csrf_token";
+          token.value = document.querySelector('meta[name="csrf-token"]').content;
+          form.append(token);
+          document.body.append(form);
+          form.submit();
+        }
+      });
+      document.querySelector("[data-logout]")?.addEventListener("submit", () => {
+        for (const key of Object.keys(localStorage)) if (key.startsWith("123notes-draft:")) localStorage.removeItem(key);
+      });
+      const themePicker = document.querySelector(".theme-picker");
+      if (themePicker) {
+        const themeSummary = themePicker.querySelector("summary");
+        const themeMenu = themePicker.querySelector(".theme-menu");
+        const positionThemeMenu = () => {
+          const anchor = themeSummary.getBoundingClientRect();
+          const viewportWidth = window.visualViewport?.width || window.innerWidth;
+          const viewportHeight = window.visualViewport?.height || window.innerHeight;
+          const edge = 12;
+          const gap = 8;
+          const spaceBelow = viewportHeight - anchor.bottom - gap - edge;
+          const spaceAbove = anchor.top - gap - edge;
+          const openAbove = spaceBelow < Math.min(themeMenu.scrollHeight, 220) && spaceAbove > spaceBelow;
+          const available = Math.max(80, openAbove ? spaceAbove : spaceBelow);
+          const menuHeight = Math.min(themeMenu.scrollHeight, available);
+          const menuWidth = themeMenu.getBoundingClientRect().width;
+          const top = openAbove
+            ? Math.max(edge, anchor.top - gap - menuHeight)
+            : Math.min(anchor.bottom + gap, viewportHeight - edge - menuHeight);
+          const preferredRight = Math.max(edge, viewportWidth - anchor.right);
+          const rightLimit = Math.max(edge, viewportWidth - menuWidth - edge);
+          themeMenu.style.top = `${top}px`;
+          themeMenu.style.right = `${Math.min(preferredRight, rightLimit)}px`;
+          themeMenu.style.maxHeight = `${menuHeight}px`;
+        };
+        themePicker.addEventListener("toggle", () => {
+          if (themePicker.open) positionThemeMenu();
+        });
+        window.addEventListener("resize", () => {
+          if (themePicker.open) positionThemeMenu();
+        });
+        window.visualViewport?.addEventListener("resize", () => {
+          if (themePicker.open) positionThemeMenu();
+        });
+      }
+    </script>
+  </body>
+</html>

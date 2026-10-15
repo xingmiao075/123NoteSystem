@@ -1,0 +1,330 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="panel" data-editor data-note-id="{{ note.id }}" data-user-id="{{ session['user_id'] }}" data-revision="{{ note.revision }}" data-save-url="{{ url_for('autosave_note', note_id=note.id) }}">
+  <div class="editor-head">
+    <a href="{{ url_for('notes') }}">← 返回筆記</a>
+    <div class="toolbar">
+      <a href="{{ url_for('note_history', note_id=note.id) }}">版本歷史</a>
+      <div id="save-status" class="save-status" data-state="saved" role="status" aria-live="polite">已儲存</div>
+      <button id="retry-save" class="secondary" type="button" hidden>重試儲存</button>
+    </div>
+  </div>
+  <div class="form-group">
+    <label for="title">標題 <span class="muted">（可先留白，之後再整理）</span></label>
+    <input id="title" name="title" maxlength="200" value="{{ note.title }}" placeholder="未命名筆記" autocomplete="off">
+  </div>
+  <div class="form-group">
+    <label for="content">內容</label>
+    <textarea id="content" name="content" maxlength="50000" placeholder="開始記錄……">{{ note.content }}</textarea>
+  </div>
+  <div class="form-group">
+    <label for="tags">標籤 <span class="muted">（使用逗號分隔，最多 10 個）</span></label>
+    <input id="tags" name="tags" maxlength="1000" value="{{ tags }}" placeholder="例如：工作, 靈感">
+  </div>
+  <section class="form-group" aria-labelledby="attachment-heading">
+    <h2 id="attachment-heading">附件</h2>
+    <div class="recording-panel" data-recorder data-upload-url="{{ url_for('upload_attachment', note_id=note.id) }}">
+      <h3>錄製語音</h3>
+      <p class="muted">允許使用麥克風後即可開始；停止後可預聽，確認後再保存到筆記。</p>
+      <div class="toolbar">
+        <button id="record-start" type="button">開始錄音</button>
+        <button id="record-stop" class="secondary" type="button" hidden>停止錄音</button>
+        <button id="record-save" type="button" hidden>保存錄音</button>
+        <button id="record-discard" class="secondary" type="button" hidden>重錄</button>
+      </div>
+      <div id="recording-status" class="recording-status" role="status" aria-live="polite">尚未錄音</div>
+      <audio id="recording-preview" class="recording-preview" controls hidden></audio>
+      <input type="hidden" id="record-csrf-token" value="{{ csrf_token() }}">
+    </div>
+    <form method="post" action="{{ url_for('upload_attachment', note_id=note.id) }}" enctype="multipart/form-data" class="file-picker">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label for="attachment-file">加入圖片或文件 <span class="muted">（單檔最多 10 MB）</span></label>
+      <div class="toolbar">
+        <input id="attachment-file" name="file" type="file" accept=".png,.jpg,.jpeg,.gif,.webp,.pdf,.txt,.csv,.docx,.xlsx,.webm,.ogg,.mp4,.m4a,.mp3,.wav" required>
+        <button type="submit">上傳附件</button>
+      </div>
+      <div class="muted">支援圖片、常見文件及 WEBM、OGG、MP4、M4A、MP3、WAV 音訊。</div>
+    </form>
+    {% if attachments %}
+      <ul class="attachment-list">
+        {% for attachment in attachments %}
+          <li class="attachment-item">
+            {% if attachment.mime_type.startswith('image/') %}
+              <a href="{{ url_for('get_attachment', attachment_id=attachment.id, preview=1) }}" target="_blank" rel="noopener">
+                <img class="attachment-preview" src="{{ url_for('get_attachment', attachment_id=attachment.id, preview=1) }}" alt="{{ attachment.original_name }} 預覽">
+              </a>
+            {% elif attachment.mime_type.startswith('audio/') %}
+              <audio class="audio-player" controls preload="none" src="{{ url_for('get_attachment', attachment_id=attachment.id, preview=1) }}">此瀏覽器不支援音訊播放。</audio>
+            {% endif %}
+            <a class="attachment-name" href="{{ url_for('get_attachment', attachment_id=attachment.id) }}">{{ attachment.original_name }}</a>
+            <span class="muted">{{ attachment.size_bytes|filesizeformat }}</span>
+            <form method="post" action="{{ url_for('delete_attachment', attachment_id=attachment.id) }}" onsubmit="return confirm('確定移除此附件？')">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button class="secondary" type="submit">移除附件</button>
+            </form>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="muted">這篇筆記尚未加入附件。</p>
+    {% endif %}
+  </section>
+  <div class="toolbar">
+    <span class="muted">輸入內容會自動儲存。快捷鍵：<kbd>Ctrl/⌘</kbd> + <kbd>S</kbd></span>
+    <a class="button secondary" href="{{ url_for('notes') }}">完成</a>
+  </div>
+</section>
+{% endblock %}
+{% block scripts %}
+<script>
+  (() => {
+    const editor = document.querySelector("[data-editor]");
+    const title = document.querySelector("#title");
+    const content = document.querySelector("#content");
+    const tags = document.querySelector("#tags");
+    const status = document.querySelector("#save-status");
+    const retryButton = document.querySelector("#retry-save");
+    const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
+    const draftKey = `123notes-draft:${editor.dataset.userId}:${editor.dataset.noteId}`;
+    let revision = Number(editor.dataset.revision);
+    let timer;
+    let saving = false;
+    let saveAgain = false;
+    let dirty = false;
+
+    const setStatus = (state, message) => {
+      status.dataset.state = state;
+      status.textContent = message;
+      retryButton.hidden = state !== "error";
+    };
+    const snapshot = () => ({ title: title.value, content: content.value, tags: tags.value });
+    const rememberDraft = () => {
+      try { localStorage.setItem(draftKey, JSON.stringify(snapshot())); } catch (_) { /* Storage can be unavailable in private browsing. */ }
+    };
+    const clearDraft = () => {
+      try { localStorage.removeItem(draftKey); } catch (_) { /* Nothing to clear. */ }
+    };
+    const save = async () => {
+      if (saving) { saveAgain = true; return; }
+      saving = true;
+      dirty = true;
+      setStatus("saving", "儲存中…");
+      const sent = snapshot();
+      rememberDraft();
+      try {
+        const response = await fetch(editor.dataset.saveUrl, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json", "X-CSRFToken": csrfToken },
+          body: JSON.stringify({ ...sent, revision }),
+        });
+        const result = await response.json();
+        if (response.status === 409) {
+          setStatus("error", `${result.error} 本機草稿已保留。`);
+          retryButton.hidden = true;
+          saveAgain = false;
+          return;
+        }
+        if (!response.ok) throw new Error(result.error || "儲存失敗");
+        revision = result.revision;
+        editor.dataset.revision = String(revision);
+        if (JSON.stringify(snapshot()) === JSON.stringify(sent)) {
+          dirty = false;
+          clearDraft();
+          setStatus("saved", "已儲存");
+        } else {
+          dirty = true;
+          rememberDraft();
+          setStatus("pending", "已保存前一個版本，正在保存新變更…");
+          saveAgain = true;
+        }
+      } catch (_) {
+        setStatus("error", navigator.onLine ? "儲存失敗，草稿已保留於此裝置。" : "目前離線，草稿已保留於此裝置；重新連線後會重試。");
+      } finally {
+        saving = false;
+        if (saveAgain) { saveAgain = false; save(); }
+      }
+    };
+    const queueSave = () => {
+      dirty = true;
+      setStatus("pending", "有尚未儲存的變更…");
+      rememberDraft();
+      clearTimeout(timer);
+      timer = setTimeout(save, 700);
+    };
+
+    try {
+      const draft = JSON.parse(localStorage.getItem(draftKey) || "null");
+      if (draft && (draft.title !== title.value || draft.content !== content.value || draft.tags !== tags.value)) {
+        title.value = draft.title || "";
+        content.value = draft.content || "";
+        tags.value = draft.tags || "";
+        queueSave();
+      }
+    } catch (_) { clearDraft(); }
+
+    [title, content, tags].forEach((field) => field.addEventListener("input", queueSave));
+    retryButton.addEventListener("click", () => { clearTimeout(timer); save(); });
+    document.addEventListener("keydown", (event) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
+        event.preventDefault();
+        clearTimeout(timer);
+        save();
+      }
+    });
+    window.addEventListener("online", () => { if (dirty) save(); });
+    window.addEventListener("beforeunload", (event) => {
+      if (dirty || saving) { event.preventDefault(); event.returnValue = ""; }
+    });
+    title.focus();
+  })();
+</script>
+<script>
+  (() => {
+    const recorderRoot = document.querySelector("[data-recorder]");
+    const startButton = document.querySelector("#record-start");
+    const stopButton = document.querySelector("#record-stop");
+    const saveButton = document.querySelector("#record-save");
+    const discardButton = document.querySelector("#record-discard");
+    const status = document.querySelector("#recording-status");
+    const preview = document.querySelector("#recording-preview");
+    const csrfToken = document.querySelector("#record-csrf-token").value;
+    let stream;
+    let recorder;
+    let chunks = [];
+    let recordingBlob;
+    let previewUrl;
+    let timer;
+    let startedAt = 0;
+
+    const setStatus = (message, state = "idle") => {
+      status.textContent = message;
+      status.dataset.state = state;
+    };
+    const stopMicrophone = () => {
+      if (stream) stream.getTracks().forEach((track) => track.stop());
+      stream = undefined;
+    };
+    const recordingExtension = (mimeType) => {
+      if (mimeType.includes("ogg")) return "ogg";
+      if (mimeType.includes("mp4")) return "m4a";
+      if (mimeType.includes("mpeg")) return "mp3";
+      if (mimeType.includes("wav")) return "wav";
+      return "webm";
+    };
+    const formatDuration = (seconds) => {
+      const minutes = Math.floor(seconds / 60).toString().padStart(2, "0");
+      const remainder = (seconds % 60).toString().padStart(2, "0");
+      return `${minutes}:${remainder}`;
+    };
+    const clearRecording = () => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      previewUrl = undefined;
+      recordingBlob = undefined;
+      preview.removeAttribute("src");
+      preview.hidden = true;
+      saveButton.hidden = true;
+      discardButton.hidden = true;
+      startButton.hidden = false;
+      startButton.disabled = false;
+      setStatus("尚未錄音");
+    };
+
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+      startButton.disabled = true;
+      setStatus("此瀏覽器不支援錄音，仍可使用檔案上傳加入音訊。");
+      return;
+    }
+
+    startButton.addEventListener("click", async () => {
+      startButton.disabled = true;
+      setStatus("正在請求麥克風權限…");
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        chunks = [];
+        const supportedTypes = [
+          "audio/webm;codecs=opus",
+          "audio/ogg;codecs=opus",
+          "audio/mp4",
+        ];
+        const mimeType = supportedTypes.find((type) => MediaRecorder.isTypeSupported(type));
+        recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+        recorder.addEventListener("dataavailable", (event) => {
+          if (event.data.size) chunks.push(event.data);
+        });
+        recorder.addEventListener("stop", () => {
+          clearInterval(timer);
+          stopMicrophone();
+          const type = recorder.mimeType || chunks[0]?.type || "audio/webm";
+          recordingBlob = new Blob(chunks, { type });
+          if (!recordingBlob.size) {
+            setStatus("沒有錄到音訊，請重新錄製。", "error");
+            startButton.hidden = false;
+            startButton.disabled = false;
+            return;
+          }
+          if (previewUrl) URL.revokeObjectURL(previewUrl);
+          previewUrl = URL.createObjectURL(recordingBlob);
+          preview.src = previewUrl;
+          preview.hidden = false;
+          saveButton.hidden = false;
+          saveButton.disabled = recordingBlob.size > 10 * 1024 * 1024;
+          discardButton.hidden = false;
+          startButton.hidden = true;
+          if (saveButton.disabled) {
+            setStatus("錄音超過 10 MB，請重錄較短內容。", "error");
+          } else {
+            setStatus(`錄音完成（${formatDuration(Math.floor((Date.now() - startedAt) / 1000))}），可先預聽。`, "ready");
+          }
+        });
+        startedAt = Date.now();
+        recorder.start(1000);
+        startButton.hidden = true;
+        stopButton.hidden = false;
+        setStatus("錄音中 00:00", "recording");
+        timer = setInterval(() => {
+          setStatus(`錄音中 ${formatDuration(Math.floor((Date.now() - startedAt) / 1000))}`, "recording");
+        }, 500);
+      } catch (error) {
+        stopMicrophone();
+        startButton.disabled = false;
+        const message = error.name === "NotAllowedError"
+          ? "麥克風權限被拒絕；請允許此網站使用麥克風，或改用檔案上傳。"
+          : error.name === "NotFoundError"
+            ? "找不到可用的麥克風。"
+            : "無法啟動錄音，請檢查麥克風設定後重試。";
+        setStatus(message, "error");
+      }
+    });
+
+    stopButton.addEventListener("click", () => {
+      if (recorder?.state === "recording") recorder.stop();
+      stopButton.hidden = true;
+    });
+    discardButton.addEventListener("click", clearRecording);
+    saveButton.addEventListener("click", async () => {
+      if (!recordingBlob) return;
+      saveButton.disabled = true;
+      discardButton.disabled = true;
+      setStatus("正在保存錄音…");
+      const extension = recordingExtension(recordingBlob.type);
+      const formData = new FormData();
+      formData.append("csrf_token", csrfToken);
+      formData.append("file", recordingBlob, `voice-note-${Date.now()}.${extension}`);
+      try {
+        const response = await fetch(recorderRoot.dataset.uploadUrl, { method: "POST", body: formData });
+        if (!response.ok) throw new Error("錄音保存失敗");
+        window.location.assign(response.url);
+      } catch (_) {
+        saveButton.disabled = false;
+        discardButton.disabled = false;
+        setStatus("錄音保存失敗，錄音仍保留，可重試。", "error");
+      }
+    });
+    window.addEventListener("pagehide", () => {
+      clearInterval(timer);
+      stopMicrophone();
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+    });
+  })();
+</script>
+{% endblock %}

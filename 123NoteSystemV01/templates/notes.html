@@ -1,0 +1,85 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="workspace">
+  <nav class="sidebar" aria-label="筆記導覽">
+    <a class="{{ 'active' if view == 'active' else '' }}" href="{{ url_for('notes') }}">所有筆記</a>
+    <a class="{{ 'active' if view == 'archive' else '' }}" href="{{ url_for('notes', view='archive') }}">封存</a>
+    <a class="{{ 'active' if view == 'trash' else '' }}" href="{{ url_for('notes', view='trash') }}">垃圾桶</a>
+    {% if view == 'active' and tags %}
+      <div class="muted" style="padding:14px 12px 4px">標籤</div>
+      {% for tag in tags %}
+        <a class="{{ 'active' if selected_tag == tag.name else '' }}" href="{{ url_for('notes', tag=tag.name) }}"># {{ tag.name }}</a>
+      {% endfor %}
+    {% endif %}
+  </nav>
+  <main>
+    <div class="page-head">
+      <div>
+        <h1>{{ {'active': '我的筆記', 'archive': '封存筆記', 'trash': '垃圾桶'}[view] }}</h1>
+        <div class="muted">先記下來，之後再慢慢整理。</div>
+      </div>
+      {% if view == 'active' %}<form method="post" action="{{ url_for('new_note') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" aria-keyshortcuts="Control+N Meta+N">＋ 新增筆記</button></form>{% endif %}
+    </div>
+    <section class="panel" aria-label="筆記列表與搜尋">
+      <form class="search-row" method="get" action="{{ url_for('notes') }}">
+        <input type="hidden" name="view" value="{{ view }}">
+        {% if selected_tag %}<input type="hidden" name="tag" value="{{ selected_tag }}">{% endif %}
+        <input data-search type="search" name="q" value="{{ query }}" placeholder="搜尋標題或內容（Ctrl/⌘ + K）" aria-label="搜尋筆記">
+        <button type="submit">搜尋</button>
+        {% if query %}<a class="button secondary" href="{{ url_for('notes', view=view) }}">清除搜尋</a>{% endif %}
+      </form>
+      {% if view != 'trash' %}
+        <form class="toolbar" method="get" action="{{ url_for('notes') }}" style="margin-bottom:16px">
+          <input type="hidden" name="view" value="{{ view }}">
+          {% if query %}<input type="hidden" name="q" value="{{ query }}">{% endif %}
+          {% if selected_tag %}<input type="hidden" name="tag" value="{{ selected_tag }}">{% endif %}
+          <label for="sort" class="muted" style="margin:0">排序</label>
+          <select id="sort" name="sort" style="width:auto" onchange="this.form.submit()">
+            <option value="updated" {{ 'selected' if sort == 'updated' }}>最近更新</option>
+            <option value="created" {{ 'selected' if sort == 'created' }}>最近建立</option>
+            <option value="title" {{ 'selected' if sort == 'title' }}>標題 A-Z</option>
+          </select>
+        </form>
+      {% endif %}
+      {% if notes %}
+        <ul class="note-list">
+          {% for note in notes %}
+            <li class="note-item">
+              <h2 class="note-title">
+                {% if view != 'trash' %}<a href="{{ url_for('edit_note', note_id=note.id) }}">{{ note.title or '未命名筆記' }}</a>{% else %}{{ note.title or '未命名筆記' }}{% endif %}
+                {% if note.is_pinned and view == 'active' %}<span aria-label="已釘選" title="已釘選">★</span>{% endif %}
+              </h2>
+              <div class="note-meta">更新於 {{ note.updated_at }}</div>
+              {% if note.content %}<p class="note-summary">{{ note.content[:240] }}{% if note.content|length > 240 %}…{% endif %}</p>{% endif %}
+              {% for name in tag_map[note.id] %}<a class="tag" href="{{ url_for('notes', tag=name) }}"># {{ name }}</a>{% endfor %}
+              <div class="actions">
+                {% if view == 'trash' %}
+                  <form method="post" action="{{ url_for('restore_note', note_id=note.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit">還原</button></form>
+                  <form method="post" action="{{ url_for('purge_note', note_id=note.id) }}" onsubmit="return confirm('永久刪除後無法還原，確定繼續？')"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="danger" type="submit">永久刪除</button></form>
+                {% else %}
+                  <a class="button secondary" href="{{ url_for('edit_note', note_id=note.id) }}">編輯</a>
+                  {% if view == 'active' %}
+                    <form method="post" action="{{ url_for('toggle_pin', note_id=note.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="secondary" type="submit">{{ '取消釘選' if note.is_pinned else '釘選' }}</button></form>
+                    <form method="post" action="{{ url_for('toggle_archive', note_id=note.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="secondary" type="submit">封存</button></form>
+                  {% else %}
+                    <form method="post" action="{{ url_for('toggle_archive', note_id=note.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="secondary" type="submit">取消封存</button></form>
+                  {% endif %}
+                  <form method="post" action="{{ url_for('trash_note', note_id=note.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="secondary" type="submit">移至垃圾桶</button></form>
+                {% endif %}
+              </div>
+            </li>
+          {% endfor %}
+        </ul>
+      {% elif query %}
+        <div class="empty"><p>找不到符合「{{ query }}」的筆記。</p><a href="{{ url_for('notes', view=view) }}">清除搜尋條件</a></div>
+      {% elif view == 'trash' %}
+        <div class="empty">垃圾桶目前是空的。</div>
+      {% elif view == 'archive' %}
+        <div class="empty">尚無封存筆記。</div>
+      {% else %}
+        <div class="empty"><p>先把想法記下來，之後再整理。</p><form method="post" action="{{ url_for('new_note') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit">建立第一篇筆記</button></form></div>
+      {% endif %}
+    </section>
+  </main>
+</div>
+{% endblock %}

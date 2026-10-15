@@ -1,0 +1,42 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>版本歷史</h1>
+    <div class="muted">{{ note.title or '未命名筆記' }} · 共 {{ revisions|length }} 個版本</div>
+  </div>
+  <a class="button secondary" href="{{ url_for('edit_note', note_id=note.id) }}">返回編輯</a>
+</div>
+<section class="panel" aria-label="筆記版本列表">
+  {% if revisions %}
+    <ol class="note-list" style="list-style:none;padding:0">
+      {% for revision in revisions %}
+        <li class="note-item">
+          <div class="page-head">
+            <div>
+              <h2 class="note-title">版本 {{ revision.version_number }}{% if loop.first %} <span class="tag">最新</span>{% endif %}</h2>
+              <div class="note-meta">保存時間：{{ revision.created_at }}</div>
+            </div>
+            {% if not loop.first %}
+              <form method="post" action="{{ url_for('restore_note_revision', note_id=note.id, revision_id=revision.id) }}" onsubmit="return confirm('還原此版本？目前內容會保留為新的歷史版本。')">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit">還原此版本</button>
+              </form>
+            {% endif %}
+          </div>
+          <h3>{{ revision.title or '未命名筆記' }}</h3>
+          {% if revision.tags %}
+            <div>{% for tag in revision.tags %}<span class="tag"># {{ tag }}</span>{% endfor %}</div>
+          {% endif %}
+          <details>
+            <summary>檢視此版本內容</summary>
+            <pre style="white-space:pre-wrap;overflow-wrap:anywhere;font:inherit">{{ revision.content or '（空白草稿）' }}</pre>
+          </details>
+        </li>
+      {% endfor %}
+    </ol>
+  {% else %}
+    <div class="empty">目前沒有版本記錄。</div>
+  {% endif %}
+</section>
+{% endblock %}
